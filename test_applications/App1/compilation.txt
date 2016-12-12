@@ -1,0 +1,1 @@
+gcc -o CSntApp clientSentApp.c emf_sock_lib.c
