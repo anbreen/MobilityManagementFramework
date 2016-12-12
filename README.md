@@ -6,7 +6,7 @@ EMF aims at a comprehensive approach to provide seamless and pervasive end-to-en
 
 This framework also support data striping for bandwidth aggregation by simultaneously utilizing multiple network interfaces, resulting in better throughput and efficient resource utilization.
 
-##Key benefits of this EMF framework:
+##Key benefits of EMF framework:
 
 -End users, having multihomed mobile devices, would be able to efficiently utilize these multiple network interfaces by having seamless continuation of services, or by using new services without any extra mobility support from the network.
 
