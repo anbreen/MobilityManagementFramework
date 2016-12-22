@@ -8,15 +8,8 @@
 # define MAXBUF		65536
 # define MAXHEX		(MAXBUF * 2) + 1
 
-
 #define id_emfserverRes 	1
-
 //-----------------------------------------------------------------------------
-//where to increment Expected sequence number
-//Discard Packet
-
-
-
 
 
 static const int KDF1_SHA1_len = 20;
@@ -50,248 +43,196 @@ char hex_to_ascii(char first, char second)
   	return strtol(hex, &stop, 16);
 }*/
 
-
 void decryptAidNonce(int *ret_nonce, int *ret_aid,char *bufat,struct assoc_list *assoc_node)
-{				  unsigned char key[40];
-                                  memcpy (key,  assoc_node->sessionKey, strlen (assoc_node->sessionKey));              			  
-			  	unsigned char iv[40];//  = IV;
-			  	memcpy (iv,  assoc_node->sessionKey, strlen (assoc_node->sessionKey));			                
-				 unsigned char ybuf[MAXBUF];	// hex decrypt output
-				 unsigned char dbuf[MAXBUF];
-				bufat[32]='\0';
-				AES_KEY aeskeyDec;
-				AES_set_decrypt_key (key, 256, &aeskeyDec);				
-				// convert hex string to binary
-				int length = hex2bin (bufat, ybuf, (int) strlen(bufat));
-				AES_cbc_encrypt (ybuf, dbuf, length, &aeskeyDec, iv, AES_DECRYPT);
-				dbuf [NoPadLen (dbuf, length)] = 0x00;
-				printf ("decode: %s (len = %d)\n", dbuf, strlen(dbuf));
-				printf ("\n");
-				char *token;
-				token=strtok(dbuf,":");
-				*ret_aid= atoi(token);
-
-//				*ret_aid = ret_aid1;
-				token=strtok(NULL,":");
-				*ret_nonce=atoi(token);
-				printf("%d,%d\n",&ret_aid,&ret_nonce);
+{	
+	unsigned char key[40];
+        memcpy (key,  assoc_node->sessionKey, strlen (assoc_node->sessionKey));              			  
+	unsigned char iv[40];//  = IV;
+	memcpy (iv,  assoc_node->sessionKey, strlen (assoc_node->sessionKey));			                
+	unsigned char ybuf[MAXBUF];	// hex decrypt output
+	unsigned char dbuf[MAXBUF];
+	bufat[32]='\0';
+	AES_KEY aeskeyDec;
+	AES_set_decrypt_key (key, 256, &aeskeyDec);				
+	// convert hex string to binary
+	int length = hex2bin (bufat, ybuf, (int) strlen(bufat));
+	AES_cbc_encrypt (ybuf, dbuf, length, &aeskeyDec, iv, AES_DECRYPT);	
+	dbuf [NoPadLen (dbuf, length)] = 0x00;
+	printf ("decode: %s (len = %d)\n", dbuf, strlen(dbuf));
+	printf ("\n");
+	char *token;
+	token=strtok(dbuf,":");
+	*ret_aid= atoi(token);
+	token=strtok(NULL,":");
+	*ret_nonce=atoi(token);
+	printf("%d,%d\n",&ret_aid,&ret_nonce);
 }
 
-
-
-void 
-ReceiveDataPacketNow(int i, int LengthofDataPacket,struct assoc_list *assoc_node)
-	{
+void ReceiveDataPacketNow(int i, int LengthofDataPacket,struct assoc_list *assoc_node)
+{
 	Data_Packet ReceivedDataPacket;			
-
-	
 	int AddSeqNo;
 	int receivedbytes=0;
-	
 	//printf("in ReceiveDataPacketNow..., receiving data packet, i: %d\n", i);
 	if ((recv(assoc_node->cid[i], &ReceivedDataPacket,8,MSG_WAITALL)) == -1) 
-		{
+	{
 		perror("recv");
-		//exit(1);
 		return;
-		}
-	
-	//printf("allocating memory, length of packet: %d\n", LengthofDataPacket);
-		char *ReceivedData;//[10000];
+	}
+	char *ReceivedData;//[10000];
 	ReceivedData = malloc(LengthofDataPacket+1);
-if(ReceivedData ==NULL)
-{perror("malloc: ");
-exit(0);
-}
-	//printf("allocating memory\n");
+	if(ReceivedData ==NULL)
+	{
+		perror("malloc: ");
+		exit(0);
+	}
 	assoc_node->con_recv_node[i].data = malloc(LengthofDataPacket);
-	
-	//printf("seq no : %d \n",ReceivedDataPacket.EMFSequenceNo);
-	//printf("ULID : %d \n",ReceivedDataPacket.ULID);
 	//printf("receiving data\n");
 	if ((receivedbytes=(recv(assoc_node->cid[i], ReceivedData,LengthofDataPacket, 0))) == -1) 
-		{
+	{
 		perror("recv");
 		//exit(1);
 		return;
-		}
-
-	//printf("byte received **** Data %d : %d **** %s\n\n" ,receivedbytes,LengthofDataPacket,ReceivedData);
+	}
 	ReceivedData[receivedbytes]='\0';
-	//printf("%s\n\n\n",ReceivedData);
 	
 	if((LengthofDataPacket-receivedbytes)==0)
-		{
-			if(assoc_node->expected_seq_no > ReceivedDataPacket.EMFSequenceNo)
-			{ 
+	{
+		if(assoc_node->expected_seq_no > ReceivedDataPacket.EMFSequenceNo)
+		{ 
 			assoc_node->con_recv_node[i].byte_received = 0;
 			assoc_node->con_recv_node[i].length = 0;
 			free(assoc_node->con_recv_node[i].data);
+		}
+		else
+		{
+			//place it in the final list
+			struct emf_list *new_node;	
+			new_node = (struct emf_list *) malloc(sizeof(struct emf_list));
+			if (new_node == NULL)
+			{
+				printf("\nMemory allocation Failure!\n");
+				exit(0);
 			}
 			else
 			{
-			//place it in the final list
-			struct emf_list *new_node;
-			new_node = (struct emf_list *) malloc(sizeof(struct emf_list));
-			
-				if (new_node == NULL)
-				{
-				printf("\nMemory allocation Failure!\n");
-				exit(0);
-				}
-				else
-				{
 				//
 				//printf("Before INsertion %d : ",ReceivedDataPacket.EMFSequenceNo);
 				//printf("Before INsertion %d : \n",LengthofDataPacket);
-				//printf("Before INsertion %s : ",ReceivedData);
-				
+				//printf("Before INsertion %s : ",ReceivedData);	
 				new_node->prev=NULL;
 				new_node->seq_no=ReceivedDataPacket.EMFSequenceNo;
 				new_node->length=LengthofDataPacket;
 				new_node->data=malloc(new_node->length);
-				
+		
 				if(new_node->data == NULL)
 					perror("malloc");
 				
-//				memcpy(new_node->data,&ReceivedData[0],LengthofDataPacket);
 				memcpy(new_node->data,&ReceivedData[0],receivedbytes);
-	//			free(ReceivedData);
 				new_node->data[receivedbytes] = '\0';
 				new_node->next=NULL;
-
-				//printf("emf_node->data: %s\n", new_node->data);
-
-				//assoc_node->expected_seq_no += receivedbytes;			    
-				//insert_emf_node(assoc_node->emf_recv_head, assoc_node->emf_recv_tail, new_node);
-				
-					if(assoc_node->expected_seq_no == new_node->seq_no)
-					{	
+				if(assoc_node->expected_seq_no == new_node->seq_no)
+				{	
 					emf_head = assoc_node->emf_recv_head;
 					emf_tail = assoc_node->emf_recv_tail;
 					AddSeqNo = insert_emf_node(new_node);
 					assoc_node->emf_recv_head = emf_head;
 					assoc_node->emf_recv_tail = emf_tail;
 					assoc_node->expected_seq_no += AddSeqNo;			    
-					}
-					else
-					{
+				}
+				else
+				{
 					emf_head = assoc_node->emf_recv_head;
 					emf_tail = assoc_node->emf_recv_tail;
 					insert_emf_node(new_node);
 					assoc_node->emf_recv_head = emf_head;
 					assoc_node->emf_recv_tail = emf_tail;
-					}
+				}
 				
 				//send to local server here...
-				
-				//printf("sending to local server...\n");
-				//printf("final emf_node->data: %s\n", new_node->data);
-				//printf("final length %d\n",new_node->length);
-				//printf("final sequence %d\n\n\n",new_node->seq_no);
-				
 				send_to_local_app(assoc_node);
 			}
 			assoc_node->con_recv_node[i].byte_received = 0;
 			assoc_node->con_recv_node[i].length = 0;
 			//free(assoc_node->con_recv_node[i].data);
-			}	
-		}
+		}	
+	}
 	else
-		{
-		//place it in the temporary list
+	{
 		assoc_node->con_recv_node[i].seq_no=ReceivedDataPacket.EMFSequenceNo;
 		assoc_node->con_recv_node[i].length=LengthofDataPacket;
 		assoc_node->con_recv_node[i].byte_received=receivedbytes;
 		memcpy(assoc_node->con_recv_node[i].data,ReceivedData,receivedbytes);
 
-		}
-
-		free(ReceivedData);
 	}
-
+	free(ReceivedData);
+}
 //////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-
-
-
-//length of base header
 void ReceiveDataReschedule(int i, int LengthofDataPacket,struct assoc_list *assoc_node)
-	{
+{
 	int j, ret=0;
 	int AddSeqNo;
 	Data_Packet ReceivedDataPacket;			
 	char *ReceivedData;
-	
 	int receivedbytes=0;
-	//printf("Length of Data Packet: %d\n", LengthofDataPacket);
 	if ((ret=(recv(assoc_node->cid[i], &ReceivedDataPacket,sizeof(Data_Packet), 0))) == -1) 
-		{
+	{
 		perror("recv");
 		exit(1);
-		}					
+	}					
 	ReceivedData = malloc(LengthofDataPacket+1);
 	if(ReceivedData == NULL)
-		printf("Memory Allocation Failed\n");
+	printf("Memory Allocation Failed\n");
 	assoc_node->con_recv_node[i].data = malloc(LengthofDataPacket);
-	
 	if ((receivedbytes=(recv(assoc_node->cid[i], ReceivedData,LengthofDataPacket, 0))) == -1) 
-		{
+	{
 		perror("recv");
 		exit(1);
-		}
-	
+	}
 	ReceivedData[receivedbytes]='\0';
-	
 	//printf("packetlength: %d, receivedbytes: %d\n%s\n", LengthofDataPacket, receivedbytes, ReceivedData);
 	int conIndex;
-
 	for(conIndex=0;conIndex<assoc_node->c_ctr;conIndex++)
-		{
+	{
 		if(ReceivedDataPacket.EMFSequenceNo > assoc_node->con_recv_node[conIndex].seq_no && ReceivedDataPacket.EMFSequenceNo <= (ReceivedDataPacket.EMFSequenceNo + assoc_node->con_recv_node[conIndex].byte_received))
-			{
+		{
 			struct emf_list *new_node;
 			new_node = (struct emf_list *) malloc(sizeof(struct emf_list));
 			if (new_node == NULL)
-				{
+			{
 				printf("\nMemory allocation Failure!\n");
 				exit(0);
-				}
+			}
 			else
-				{
+			{
 				new_node->prev=NULL;
-				new_node->seq_no=assoc_node->con_recv_node[conIndex].seq_no;   // what will it be ?
-				//new_node->length=(assoc_node->con_recv_node[conIndex].(byte_received------);
+				new_node->seq_no=assoc_node->con_recv_node[conIndex].seq_no;   
 				new_node->length=((assoc_node->con_recv_node[conIndex].seq_no+assoc_node->con_recv_node[conIndex].byte_received)-(ReceivedDataPacket.EMFSequenceNo));
-
 				new_node->data=malloc(new_node->length);
 				memcpy(new_node->data,assoc_node->con_recv_node[conIndex].data,new_node->length);
 				new_node->next=NULL;
-				//assoc_node->expected_seq_no += assoc_node->con_recv_node[conIndex].byte_received;			    
-				//insert_emf_node(assoc_node->emf_recv_head, assoc_node->emf_recv_tail, new_node);
-
+		
 				if(assoc_node->expected_seq_no == new_node->seq_no)
-					{	
+				{	
 					emf_head = assoc_node->emf_recv_head;
 					emf_tail = assoc_node->emf_recv_tail;
 					AddSeqNo = insert_emf_node(new_node);
 					assoc_node->emf_recv_head = emf_head;
-					assoc_node->emf_recv_tail = emf_tail;
-					
+					assoc_node->emf_recv_tail = emf_tail;				
 					assoc_node->expected_seq_no += AddSeqNo;			    
-					
 					for(j = new_node->length; j < assoc_node->con_recv_node[conIndex].length; j++)
-						{
+					{
 						assoc_node->con_recv_node[conIndex].data[j-new_node->length] = assoc_node->con_recv_node[conIndex].data[j];
-						}
+					}
 	
 					assoc_node->con_recv_node[conIndex].length -= new_node->length;
 					assoc_node->con_recv_node[conIndex].seq_no += new_node->length;
 	
-					}
+				}
 				else
 					if(assoc_node->expected_seq_no < new_node->seq_no)
-						{
+					{
 						emf_head = assoc_node->emf_recv_head;
 						emf_tail = assoc_node->emf_recv_tail;
 						insert_emf_node(new_node);
@@ -299,29 +240,19 @@ void ReceiveDataReschedule(int i, int LengthofDataPacket,struct assoc_list *asso
 						assoc_node->emf_recv_tail = emf_tail;
 						
 						for(j = new_node->length; j < assoc_node->con_recv_node[conIndex].length; j++)
-							{
+						{
 							assoc_node->con_recv_node[conIndex].data[j-new_node->length] = assoc_node->con_recv_node[conIndex].data[j];
-							}
-						
+						}
 						assoc_node->con_recv_node[conIndex].length -= new_node->length;
 						assoc_node->con_recv_node[conIndex].seq_no += new_node->length;
-						}
-				
-				//assoc_node->con_recv_node[i].byte_received = 0;
-				//assoc_node->con_recv_node[i].length = 0;
-				//insert in the list
-				//ReceivedDataPacket.EMFSequenceNo= assoc_node->con_recv_node[conIndex].byte_received;
-				//RecvByte = assoc_node->con_recv_node[conIndex].byte_received - ReceivedDataPacket.EMFSequenceNo;
-				
+					}
 				break;
 				}
-			//make a packet and place it in the final list
-			//and set our sequence number = assoc_node->con_recv_node[i].byte_received
 			}
 		}
 	
 	if((LengthofDataPacket-receivedbytes)==0)
-		{
+	{
 		//place it in the final list
 		struct emf_list *new_node;
 		new_node = (struct emf_list *) malloc(sizeof(struct emf_list));
