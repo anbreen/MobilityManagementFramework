@@ -30,9 +30,6 @@ void save_and_update_emf_buffer(struct assoc_list *assoc_node, char *data, unsig
 
 void schedule_data()
 {
-	//if (show_msg)
-		//showmsg("\nscheduling_handler: schedule_data() function called, now inside it...");
-
 	unsigned int i, packet_size, instant_throughput, header_size, seq_no, instant_throughput2; // for new connection (for handover)
 	int buffer_empty_space, len, current_data, buffer_empty_space2, current_data2, unread_data;
 	struct assoc_list *assoc_node;
@@ -48,218 +45,11 @@ void schedule_data()
 	
 	//------loop through the complete association list
 	for(assoc_node = assoc_head; assoc_node != NULL; assoc_node = assoc_node->next)
-		{
+	{
 		assoc_node->HandoverCalled=0;
-
-		//---------- if the scenario is normal and there is data to be send then proceed
+		//if the scenario is normal and there is data to be send then proceed
 		if(assoc_node->scenario == NORMAL)
-			//if(assoc_node->emf_send_head->length != 0)
-				if(assoc_node->emf_send_head->length > 1)
-				{
-				i = 0;
-				
-				//---- when scheduling counter is 0, this means this is the first time and send at most 32kB data
-				if(assoc_node->sched_ctr[i] == 0)
-					{				   
-					packet_size = assoc_node->emf_send_head->length;
-					
-					//--- decide the packet size
-					if(packet_size > INITIAL_PACKET_SIZE)
-							packet_size = INITIAL_PACKET_SIZE;
-					
-					if(packet_size > 0)
-						{
-						header_size = make_emf_packet(assoc_node, assoc_node->emf_send_head->seq_no, packet_size, emf_packet, DATAPACK);
-						memcpy(&emf_packet[header_size], assoc_node->emf_send_head->data, packet_size); //copy data in packet seperately
-						
-						//--- send the data packet created above
-						if(assoc_node->dont_send[i] == 0)
-							if(send(assoc_node->cid[i], emf_packet, header_size+packet_size, 0))
-								{
-								
-								//printf("\n\npacket_size : %d\n",packet_size);
-								//printf("assoc_node->emf_send_head->data %d\n",assoc_node->emf_send_head->length);
-								
-								//--------remove the data that is send by the emf from the emf list
-								save_and_update_emf_buffer(assoc_node, assoc_node->emf_send_head->data, assoc_node->emf_send_head->seq_no, header_size, packet_size, i);
-								
-								// -----place the data removed from the emf lsit in the emf send buffer and keep it there till an acked for that data is received by the TCP
-								update_emf_send_list(assoc_node, packet_size);						
-								
-								assoc_node->last_data_in_buffer[i] = header_size + packet_size;
-								assoc_node->prev_throughput[i] = 0;
-								}
-							else
-								{
-								//-----------get extended error information and handle error
-								}
-						}
-					assoc_node->sched_ctr[i]++;			
-					}
-				
-				//---------- don't send any data for next 4 iterations
-				else if(assoc_node->sched_ctr[i] < 4) 
-					{
-					assoc_node->sched_ctr[i]++;
-					}
-				
-				else
-					{   
-					
-					//-- now if the scheduling counter is not 0, and data has been previously send on this connection
-					len = sizeof(buffer_empty_space);
-					if(getsockopt(assoc_node->cid[i],SOL_SOCKET,SO_SNDBUF,&buffer_empty_space,&len) == -1)//--retrieve the size of data in the tcp buffer of this connection
-						{
-						buffer_empty_space = 256*1024;
-						}
-					
-					if(ioctl(assoc_node->cid[i],SIOCOUTQ, &current_data) == -1)// retrive the size of unsent data
-						current_data = 0;
-						
-					buffer_empty_space -= current_data;	
-
-					//--- calculate instant_through put
-					instant_throughput = assoc_node->last_data_in_buffer[i] - current_data;					
-					
-					//--- calculate the instant throughput and on its base update the connection send buffer
-					update_con_send_buffer(assoc_node, instant_throughput, i);					
-					
-					//--- calculate average through out
-					assoc_node->avg_throughput[i] = (assoc_node->prev_throughput[i] + instant_throughput) / 2;
-					
-					
-					//--- throughput is zero and we have data to send
-					if( (assoc_node->avg_throughput[i] == 0) && (current_data > 0) )
-						{
-						//IMPORTANT: this is complete implemented and tested with HostAgent:: //Zeeshan Dec-4 
-						//But not yet used
-						
-						/*
-						printf("\nScheduler: Inside INTERFACE_IP_REQ\n");
-						
-						//--- sending IP INTERFACE_IP_REQ to Host Agent as throughpput is zero
-						
-						HA_TLV.TLVType = INTERFACE_IP_REQ;
-						
-						HA_TLV.TLVLength = 19;
-						
-						TLVUnit.intValue = assoc_node->aid;
-						
-						for(i=0; i<4; i++)
-							HA_TLV.TLVValue[i] = TLVUnit.charValue[i];
-						
-						len = sizeof(struct sockaddr);
-						if(getsockname(assoc_node->cid[0], (struct sockaddr*)&my_addr, &len) == 0)
-						{	
-							memcpy(&HA_TLV.TLVValue[i], inet_ntoa(my_addr.sin_addr), strlen(inet_ntoa(my_addr.sin_addr)) );
-							HA_TLV.TLVValue[i+strlen(inet_ntoa(my_addr.sin_addr))] = '\0';
-							//printf("Got IP: %s\n%s\n", inet_ntoa(my_addr.sin_addr), &HA_TLV.TLVValue[12]);
-							//memcpy(&InternalFromIP, inet_ntoa(my_addr.sin_addr), strlen(inet_ntoa(my_addr.sin_addr)) +1 );
-							//InternalFromIP[strlen(inet_ntoa(my_addr.sin_addr))+1]='\0';   //AMBREEN
-						}
-						else 
-						{
-							memcpy(&HA_TLV.TLVValue[i], "0.0.0.0", 7);
-							HA_TLV.TLVValue[i+7] = '\0';
-							//printf("Not Got IP: %s\n", &HA_TLV.TLVValue[12]);
-						}
-						
-						if (send(sock_ha, &HA_TLV, sizeof(HA_TLV), 0)==-1)	//1. send association information to HA
-						{
-							showerr("Can't send local compliance to host agent...:");
-						}
-						
-						printf("\nCORE : INTERFACE_IP_REQ Message sent to Host Agent with AID(%d) and IP(%s) ", assoc_node->aid ,inet_ntoa(my_addr.sin_addr));
-					
-					*/
-						
-						}
-						
-					
-					if( (instant_throughput < LOWER_THROUGHPUT_LIMIT) && (current_data > LOWER_THROUGHPUT_LIMIT) )
-						{
-						if(assoc_node->sched_ctr[i] < 8)
-							{
-							assoc_node->sched_ctr[i]++;
-							continue;
-							}
-						else
-							if(assoc_node->sched_ctr[i] == 8)
-								{
-								assoc_node->sched_ctr[i]++;
-								}
-						else
-							if(assoc_node->sched_ctr[i] < 13)
-								{
-								assoc_node->sched_ctr[i]++;
-								continue;
-								}
-						else
-							{
-							//reschedule in case of BA
-							//packet_type = DATAPACK;
-							//reschedule_data(assoc_node, emf_packet, i, packet_type);
-							assoc_node->sched_ctr[i] = 4;
-							//continue;
-							}
-						}
-					else
-						assoc_node->sched_ctr[i] = 4;
-							
-							
-					//--- calculate the packet size , depeding upon the data to be send present in the emf buffer 
-					//--- assoc_node->emf_send_head->length , maximum packet size defined by the EMF and the instant throughout
-					packet_size = instant_throughput*2;
-					
-					if(packet_size == 0 && assoc_node->last_buf_empty == 1)
-						{
-						packet_size = assoc_node->emf_send_head->length;
-						}
-					
-					if(packet_size > buffer_empty_space)
-						packet_size = buffer_empty_space;
-					
-					if(packet_size > assoc_node->emf_send_head->length)
-						packet_size = assoc_node->emf_send_head->length;
-						
-					if(packet_size > MAX_PACKET_SIZE)
-						packet_size = MAX_PACKET_SIZE;
-               
-					if(assoc_node->emf_send_head->length == 0)
-						{
-						assoc_node->last_buf_empty = 1;
-						}
-					else
-						assoc_node->last_buf_empty = 0;
-					
-					if(packet_size > 0)
-						{
-						
-						//---make the emf header and place the data in it
-						header_size = make_emf_packet(assoc_node, assoc_node->emf_send_head->seq_no, packet_size, emf_packet, DATAPACK);
-						memcpy(&emf_packet[header_size], assoc_node->emf_send_head->data, packet_size); //copy data in packet seperately
-						
-						
-						if(assoc_node->dont_send[i] == 0)
-							if(send(assoc_node->cid[i], emf_packet, header_size+packet_size, 0))
-								{
-								save_and_update_emf_buffer(assoc_node, assoc_node->emf_send_head->data, assoc_node->emf_send_head->seq_no, header_size, packet_size,i);
-								update_emf_send_list(assoc_node, packet_size);					
-								assoc_node->last_data_in_buffer[i] = current_data +  header_size + packet_size;
-								assoc_node->prev_throughput[i] = instant_throughput;	
-								}
-							else
-								{
-								//get extended error information and handle error
-								}	
-						}
-						else
-							{
-							assoc_node->last_data_in_buffer[i] = current_data;
-							assoc_node->prev_throughput[i] = instant_throughput;	
-							}
-					}			
-				}
+			normal_scenario();
 		
 		
 		//--- this scenario is executed when there is a trafic shift command or a link shift command from the HA, or when a handover packet is received by the remote side.
@@ -809,10 +599,143 @@ void schedule_data()
 	
 } //  end of schedule data function 
 
+void normal_scenario()
+{
+	if(assoc_node->emf_send_head->length > 1)
+	{
+		i = 0;
+		//---- when scheduling counter is 0, this means this is the first time and send at most 32kB data
+		if(assoc_node->sched_ctr[i] == 0)
+		{				   
+			packet_size = assoc_node->emf_send_head->length;
+			//--- decide the packet size
+			if(packet_size > INITIAL_PACKET_SIZE)
+				packet_size = INITIAL_PACKET_SIZE;
+			
+			if(packet_size > 0)
+			{
+				header_size = make_emf_packet(assoc_node, assoc_node->emf_send_head->seq_no, packet_size, emf_packet, DATAPACK);
+				memcpy(&emf_packet[header_size], assoc_node->emf_send_head->data, packet_size); //copy data in packet seperately
+				
+				//--- send the data packet created above
+				if(assoc_node->dont_send[i] == 0)
+					if(send(assoc_node->cid[i], emf_packet, header_size+packet_size, 0))
+					{	
+						//--------remove the data that is send by the emf from the emf list
+						save_and_update_emf_buffer(assoc_node, assoc_node->emf_send_head->data, assoc_node->emf_send_head->seq_no, header_size, packet_size, i);
+						// -----place the data removed from the emf lsit in the emf send buffer and keep it there till an acked for that data is received by the TCP
+						update_emf_send_list(assoc_node, packet_size);						
+						assoc_node->last_data_in_buffer[i] = header_size + packet_size;
+						assoc_node->prev_throughput[i] = 0;
+					}
+				else
+				{
+							
+				}					}
+				assoc_node->sched_ctr[i]++;			
+			}		
+			//---------- don't send any data for next 4 iterations
+			else if(assoc_node->sched_ctr[i] < 4) 
+			{
+				assoc_node->sched_ctr[i]++;
+			}	
+			else
+			{   		
+			//-- now if the scheduling counter is not 0, and data has been previously send on this connection
+			len = sizeof(buffer_empty_space);
+				if(getsockopt(assoc_node->cid[i],SOL_SOCKET,SO_SNDBUF,&buffer_empty_space,&len) == -1)//--retrieve the size of data in the tcp buffer of this connection					{
+					buffer_empty_space = 256*1024;
+			}					
+				if(ioctl(assoc_node->cid[i],SIOCOUTQ, &current_data) == -1)// retrive the size of unsent data
+				current_data = 0;
+		
+		buffer_empty_space -= current_data;	
+		//--- calculate instant_through put
+		instant_throughput = assoc_node->last_data_in_buffer[i] - current_data;					
+		//--- calculate the instant throughput and on its base update the connection send buffer
+		update_con_send_buffer(assoc_node, instant_throughput, i);					
+		//--- calculate average through out
+		assoc_node->avg_throughput[i] = (assoc_node->prev_throughput[i] + instant_throughput) / 2;
+		//--- throughput is zero and we have data to send
+		if( (assoc_node->avg_throughput[i] == 0) && (current_data > 0) )
+		{	
+		}
+		if( (instant_throughput < LOWER_THROUGHPUT_LIMIT) && (current_data > LOWER_THROUGHPUT_LIMIT) )
+		{
+			if(assoc_node->sched_ctr[i] < 8)
+			{
+				assoc_node->sched_ctr[i]++;
+				continue;
+			}
+			else
+				if(assoc_node->sched_ctr[i] == 8)
+				{
+					assoc_node->sched_ctr[i]++;
+				}
+			else
+				if(assoc_node->sched_ctr[i] < 13)
+				{
+					assoc_node->sched_ctr[i]++;
+					continue;
+				}
+			else
+			{
+				assoc_node->sched_ctr[i] = 4;
+			}
+		}
+		else
+			assoc_node->sched_ctr[i] = 4;
+		packet_size = instant_throughput*2;			
+		if(packet_size == 0 && assoc_node->last_buf_empty == 1)
+		{
+			packet_size = assoc_node->emf_send_head->length;
+		}
+		
+		if(packet_size > buffer_empty_space)
+			packet_size = buffer_empty_space;
+		
+		if(packet_size > assoc_node->emf_send_head->length)
+			packet_size = assoc_node->emf_send_head->length;
+						
+		if(packet_size > MAX_PACKET_SIZE)
+			packet_size = MAX_PACKET_SIZE;
+               
+		if(assoc_node->emf_send_head->length == 0)
+		{
+			assoc_node->last_buf_empty = 1;
+		}
+		else
+			assoc_node->last_buf_empty = 0;
+		
+		if(packet_size > 0)
+		{		
+			//---make the emf header and place the data in it
+			header_size = make_emf_packet(assoc_node, assoc_node->emf_send_head->seq_no, packet_size, emf_packet, DATAPACK);
+			memcpy(&emf_packet[header_size], assoc_node->emf_send_head->data, packet_size); //copy data in packet seperately			
+						
+			if(assoc_node->dont_send[i] == 0)
+				if(send(assoc_node->cid[i], emf_packet, header_size+packet_size, 0))
+				{
+					save_and_update_emf_buffer(assoc_node, assoc_node->emf_send_head->data, assoc_node->emf_send_head->seq_no, header_size, packet_size,i);
+					update_emf_send_list(assoc_node, packet_size);					
+					assoc_node->last_data_in_buffer[i] = current_data +  header_size + packet_size;
+					assoc_node->prev_throughput[i] = instant_throughput;	
+				}
+			else
+			{
+				//get extended error information and handle error
+			}	
+		}
+		else
+		{
+			assoc_node->last_data_in_buffer[i] = current_data;
+			assoc_node->prev_throughput[i] = instant_throughput;
+		}
+	}			
+}
+}
 
 
-
-//-----------------------------------------------------------------------------
 
 int is_stable(int cid)
 {
@@ -822,24 +745,16 @@ int is_stable(int cid)
 	unsigned int cong_wnd, ssthreshold;
 	struct tcp_info tcp_info;
 	int tcp_info_length;
-
 	tcp_info_length = sizeof(tcp_info);
 	if ( getsockopt( cid, SOL_TCP, TCP_INFO, (void *)&tcp_info, (socklen_t *)&tcp_info_length ) == 0 ) 
-		{
-		// printf("snd_cwnd: %u\nsnd_ssthresh: %u\nrcv_ssthresh: %u\nrtt: %u\nrtt_var: %u\n", tcp_info.tcpi_snd_cwnd, tcp_info.tcpi_snd_ssthresh, tcp_info.tcpi_rcv_ssthresh, tcp_info.tcpi_rtt, tcp_info.tcpi_rttvar);
+	{
 		//get congestion window of TCP connection: cwnd = congestion window and slow start threshold: ssthreshold = ssthreshold
 		//checking whether TCP is in slow start phase or in linear increase
 		if(tcp_info.tcpi_snd_cwnd >= tcp_info.tcpi_snd_ssthresh)
 			return 1;
-		}
-	//return 0;
+	}
 	return 1;
 }
-
-//-----------------------------------------------------------------------------
-
-
-
 
 void reschedule_data(struct assoc_list *assoc_node, char *emf_packet, int fromIndex, int toIndex, unsigned int packet_type)
 {
@@ -848,335 +763,179 @@ void reschedule_data(struct assoc_list *assoc_node, char *emf_packet, int fromIn
 	
 	int diff, ret=0, cdata=0;
 	unsigned int packet_size, seq_no, header_size;
-	
 	if(assoc_node->con_send_head[fromIndex] != NULL)
-		{
+	{
 		diff = assoc_node->con_send_head[fromIndex]->bytes_sent - assoc_node->con_send_head[fromIndex]->hdr_size;
 		if(diff <= 0)
-			{
-			//seq_no = assoc_node->con_send_head[i]->seq_no;
+		{
 			diff = 0;
-			}
-		//get unsent data in old connection
+		}
 		struct con_slist *con_send_node;
-		//packet_type = HANDOVER_DATA;
-		//assoc_node->last_data_in_buffer[1] = 0;
-		
 		for (con_send_node = assoc_node->con_send_head[fromIndex]; con_send_node != NULL; con_send_node = con_send_node->next)
-			{
+		{
 			seq_no = con_send_node->seq_no + diff;
 			packet_size = (con_send_node->data_size - diff);
-			//		reserved = 64;
 			header_size = make_emf_packet(assoc_node, seq_no, packet_size, emf_packet, packet_type);
 			reserved = 0;
 			memcpy(&emf_packet[header_size], &con_send_node->data[diff], packet_size );
-			
-			//memcpy(&emf_packet[header_size], assoc_node->emf_send_head->data, packet_size); //copy data in packet seperately
 			if(ioctl(assoc_node->cid[toIndex],SIOCOUTQ,&cdata) == -1)// unsent data
 				cdata = 0;
 						
 			if((ret=send(assoc_node->cid[toIndex], emf_packet, header_size+packet_size, 0))>0)
-				{
+			{
 				if(ioctl(assoc_node->cid[toIndex],SIOCOUTQ,&cdata) == -1)// unsent data
 					cdata = 0;
 				save_and_update_emf_buffer(assoc_node, &con_send_node->data[diff], seq_no, header_size, packet_size, toIndex);
 				assoc_node->last_data_in_buffer[toIndex] += (header_size + packet_size);
-				}
+			}
 			else
-				{
+			{
 				//get extended error information and handle error
-				}
-				
+			}				
 			diff = 0;
 			packet_type = DATAPACK;
-			
-			} // end of for loop
-		}
+		} // end of for loop
+	}
 	else
 		return;
 }
-
-//-----------------------------------------------------------------------------
 
 void get_and_bind_to_ip(int sock_fd)
 {
 	if (show_msg)
 		showmsg("\nscheduling_handler: get_and_bind_to_ip() function called, now inside it...");
-
-	//need handle any message other than INTERFACE_IP_RES as well and loop until we don't receive our required message
 	
 	int TLVLength;
 	char TLVValue[20];
 	struct sockaddr_in con_addr;
-
 	TLVValue[0] = INTERFACE_IP_REQ;
-	if (send(sock_ha, TLVValue, 1, 0)==-1)		                              //1. check local compliance by sending ID and port number
+	if (send(sock_ha, TLVValue, 1, 0)==-1)		                              
 		showerr("Can't send INTERFACE_IP_REQ to host agent...:");
 	else
+	{
+		if (recv(sock_ha, TLVValue, 1, 0) ==-1)                               
 		{
-		if (recv(sock_ha, TLVValue, 1, 0) ==-1)                               //2. receive Length value from H.A
-			{
 			showerr("Couldn't received INTERFACE_IP_REQ from host agent...:");
-			}
+		}
 		else
-			{
+		{
 			if(TLVValue[0] == INTERFACE_IP_RES)
-				{
+			{
 				if (recv(sock_ha, &TLVLength, 1, 0) ==-1)                            
-					{
+				{
 					showerr("Couldn't received INTERFACE_IP_REQ from host agent...:");
-					}
+				}
 				else
-					{
+				{
 					if (recv(sock_ha, TLVValue, TLVLength, 0) ==-1)                               
-						{
+					{
 						showerr("Couldn't received INTERFACE_IP_REQ from host agent...:");
-						}
+					}
 					else
-						{
+					{
 						con_addr.sin_family = AF_INET;
 						con_addr.sin_addr.s_addr = inet_addr(TLVValue);
 						memset(con_addr.sin_zero, '\0', sizeof con_addr.sin_zero);
-
 						int opt=1;
-                        setsockopt (sock_fd, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof (opt));
-                        setsockopt (sock_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof (opt));
-                        
+                       				setsockopt (sock_fd, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof (opt));
+                       				setsockopt (sock_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof (opt));
 						if(bind(sock_fd, (struct sockaddr*) &con_addr, sizeof(con_addr)) == -1)
-							{
+						{
 							showerr("bind error:");
-							}
+						}
 						else
-							{
+						{
 		
-							}
 						}
 					}
 				}
 			}
 		}
+	}
 }
-//-----------------------------------------------------------------------------
-
-
 
 void update_emf_send_list(struct assoc_list *assoc_node, unsigned int packet_size)
 {
-	//if (show_msg)
-		//showmsg("\nscheduling_handler: update_emf_send_list() function called, now inside it...");
-
 	int i;
-
-	// need to rethink to delete data below
-	//assoc_node->emf_send_head->data   += packet_size;
 	for(i = packet_size; i < assoc_node->emf_send_head->length; i++)
-		{
+	{
 		assoc_node->emf_send_head->data[i-packet_size] = assoc_node->emf_send_head->data[i];
-		}
-	
+	}	
 	assoc_node->emf_send_head->length -= packet_size;
 	assoc_node->emf_send_head->seq_no += packet_size;
 }
 
-
-
-
-//-----------------------------------------------------------------------------
-
-
-
-
-
 int make_emf_packet(struct assoc_list *assoc_node, unsigned int seq_no, unsigned int packet_size, char *emf_packet, int packet_type)
 {
-	//if (show_msg)
-		//showmsg("\nscheduling_handler: make_emf_packet() function called, now inside it...");
-	
 	int index;
-	
-	//struct sockaddr_in *my_addr = (struct sockaddr_in *) assoc_node->dest_addr;
-					
-					
 	baseheader_packet.baseheader_packet.Version = EMF_VERSION;
 	baseheader_packet.baseheader_packet.PacketType = packet_type;
 	baseheader_packet.baseheader_packet.Reserved = reserved;
 	baseheader_packet.baseheader_packet.DataLength = packet_size;
-
 	memcpy(emf_packet, baseheader_packet.str, sizeof(baseheader_packet));
 	index = sizeof(baseheader_packet);
-	
 	if( (packet_type == HANDOVER) || (packet_type == BANDWIDTHAGGREGATION) || (packet_type == SINGLEJOIN) || (packet_type == HANDOVER_DATA) || (packet_type == BANDWIDTHAGGREGATION_DATA) || (packet_type == SINGLEJOIN_DATA) || (packet_type == ASSOCIATION_TERMINATION_REQUEST) || (packet_type == ASSOCIATION_TERMINATION_RESPONSE) || (packet_type == FINISH) || (packet_type == FINISH_ACK)) 
-		{
-		
+	{	
 		BIO *out;
-	out=BIO_new(BIO_s_file());
-	if (out == NULL) exit(0);
-	BIO_set_fp(out,stdout,BIO_NOCLOSE);
-
-	BIO_puts(out,assoc_node->sessionKey);
-
-printf("length %d :\n", strlen(assoc_node->sessionKey)); 		
-		//////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-			  unsigned char key[40];
-  			  unsigned char iv[40];//  = IV;
-              memcpy (key,  assoc_node->sessionKey, strlen (assoc_node->sessionKey));
-			  memcpy (iv,  assoc_node->sessionKey, strlen (assoc_node->sessionKey));
-              
-              unsigned long ilen;			  
-			  unsigned char ibuf[MAXBUF];	// padded input to encrypt
-			  unsigned char obuf[MAXHEX];	// encrypt output
-			  unsigned char xbuf[MAXHEX];	// hex encrypt output
-			  unsigned char ybuf[MAXBUF];	// hex decrypt output
-			  unsigned char dbuf[MAXBUF];	// decrypt output
-			  
-			                
-				assoc_node->SNonce++;
-				AES_KEY aeskeyEnc;
-				int nonce =assoc_node->SNonce;
-				char buf[100];
-
-				
-				sprintf(buf,"%d%s%d%s",assoc_node->aid,":",nonce,":");
-		
-				printf("\n%d\n",strlen(buf));
-				// prepare the input data with padding
-				memset (ibuf, 0x00, sizeof (ibuf));
-				memcpy (ibuf, buf, strlen (buf));
-
-				// pad and calc length of block to encode
-				ilen = PadData (ibuf, (unsigned int) strlen (buf), BLOCK_LEN);
-			 
-				// init cipher keys 
-				AES_set_encrypt_key (key, 256, &aeskeyEnc);
-
-				// encrypt string
-	//			memcpy (iv, IV, sizeof (IV));
-				AES_cbc_encrypt (ibuf, obuf, ilen, &aeskeyEnc, iv, AES_ENCRYPT);
-
-				// convert encoded string to hex and display
-				bin2hex (obuf,xbuf,ilen);
-				printf ("encode: %s (len = %d)\n", xbuf, (int) strlen (xbuf));
-
-				//////////////decryption/////////////////////////////////////
-  /*              AES_KEY aeskeyDec;
-				AES_set_decrypt_key (key, 256, &aeskeyDec);
-				// convert hex string to binary
-				hex2bin (xbuf, ybuf, (int) strlen(xbuf));
-
-				// compare binary values
-				if (memcmp (obuf, ybuf, ilen) != 0) {
-				  printf ("HEX DECODE FAILED!\n");
-				  return (0);
-				}
-
-				// decrypt string
-//				memcpy (iv, IV, sizeof (IV));
-				AES_cbc_encrypt (ybuf, dbuf, ilen, &aeskeyDec, iv, AES_DECRYPT);
-				dbuf [NoPadLen (dbuf, ilen)] = 0x00;
-				printf ("decode: %s (len = %d)\n", dbuf, strlen(dbuf));
-
-				// compare binary values
-				//if (memcmp (buf, dbuf, (unsigned int) strlen (buf)) != 0) {
-				  //printf ("DECRYPT FAILED!\n");
-			//	  return (0);
-				//}
-
-				// insert blank line before next input prompt
-				printf ("\n");
-
-
-
-			aidnon *aidn2;
-			aidn2 = (aidnon *)buf;
-
-			printf("%d",aidn2->aid);
-			printf("%d",aidn2->nonce);
-
-*/
-
-
-							  
-			///////////////////////////////////////////////////////////////////////////////////////////////////////
-			
+		out=BIO_new(BIO_s_file());
+		if (out == NULL) exit(0);
+			BIO_set_fp(out,stdout,BIO_NOCLOSE);
+		BIO_puts(out,assoc_node->sessionKey);
+		printf("length %d :\n", strlen(assoc_node->sessionKey)); 		
+		unsigned char key[40];
+		unsigned char iv[40];//  = IV;
+             	memcpy (key,  assoc_node->sessionKey, strlen (assoc_node->sessionKey));
+		memcpy (iv,  assoc_node->sessionKey, strlen (assoc_node->sessionKey));
+                unsigned long ilen;			  
+		unsigned char ibuf[MAXBUF];	// padded input to encrypt
+		unsigned char obuf[MAXHEX];	// encrypt output
+		unsigned char xbuf[MAXHEX];	// hex encrypt output
+		unsigned char ybuf[MAXBUF];	// hex decrypt output
+		unsigned char dbuf[MAXBUF];	// decrypt output
+		assoc_node->SNonce++;
+		AES_KEY aeskeyEnc;
+		int nonce =assoc_node->SNonce;
+		char buf[100];
+		sprintf(buf,"%d%s%d%s",assoc_node->aid,":",nonce,":");
+		printf("\n%d\n",strlen(buf));
+		// prepare the input data with padding
+		memset (ibuf, 0x00, sizeof (ibuf));
+		memcpy (ibuf, buf, strlen (buf));
+		// pad and calc length of block to encode
+		ilen = PadData (ibuf, (unsigned int) strlen (buf), BLOCK_LEN);			 
+		// init cipher keys 
+		AES_set_encrypt_key (key, 256, &aeskeyEnc);
+		// encrypt string
+		AES_cbc_encrypt (ibuf, obuf, ilen, &aeskeyEnc, iv, AES_ENCRYPT);
+		// convert encoded string to hex and display
+		bin2hex (obuf,xbuf,ilen);
+		printf ("encode: %s (len = %d)\n", xbuf, (int) strlen (xbuf));	
 		handover_packet.handover_packet.EncryptedAIDNonceClear = assoc_node->aid;
 		strncpy(handover_packet.handover_packet.EncryptedAIDNonce,xbuf,strlen(xbuf));
 		memcpy(&emf_packet[index],handover_packet.str,sizeof(handover_packet));
 		index += sizeof(handover_packet);
-		}
-		
+	}	
 	if( (packet_type == DATAPACK) || (packet_type == HANDOVER_DATA) || (packet_type == BANDWIDTHAGGREGATION_DATA) || (packet_type == SINGLEJOIN_DATA) ) 
-		{
+	{
 		data_packet.data_packet.EMFSequenceNo = seq_no;
 		data_packet.data_packet.ULID = assoc_node->ProtocolNo;
 		memcpy(&emf_packet[index],data_packet.str,sizeof(data_packet));
 		index += sizeof(data_packet);		
-		}
-	
-//		printf("seq_no : %d \n",seq_no);
-	//	data_packet.data_packet.EMFSequenceNo = assoc_node->emf_send_head->seq_no;
-	//	data_packet.data_packet.ULID = my_addr->sin_port;
-	
-	//	emf_packet = malloc(sizeof(baseheader_packet) + sizeof(data_packet) + packet_size);
-	
-	//	memcpy(emf_packet, baseheader_packet.str, sizeof(baseheader_packet));
-	//	memcpy(&emf_packet[sizeof(baseheader_packet)],data_packet.str,sizeof(data_packet));
-	//	memcpy(&emf_packet[sizeof(baseheader_packet) + sizeof(data_packet)], assoc_node->emf_send_head->data, packet_size);
-	
-	/*if (packet_type == 1)
-            	printf("\nCORE:CORE:[-_-_-_-_(EMF PACKET of TYPE ASSOCIATION_ESTABLISHMENT_REQUEST)-_-_-_-_]\n");
-        else if (packet_type == 2)
-            printf("\nCORE:[-_-_-_-_(EMF PACKET of TYPE ASSOCIATION_ESTABLISHMENT_RESPONSE)-_-_-_-_]\n");
-        else if (packet_type == 3)
-            printf("\nCORE:[-_-_-_-_(EMF PACKET of TYPE ASSOCIATION_TERMINATION_REQUEST)-_-_-_-_]\n");
-        else if (packet_type == 4)
-            printf("\nCORE:[-_-_-_-_(EMF PACKET of TYPE ASSOCIATION_TERMINATION_RESPONSE)-_-_-_-_]\n");
-        else if (packet_type == 5)
-            printf("\nCORE:[-_-_-_-_(EMF PACKET of TYPE FINISH)-_-_-_-_]\n");
-        else if (packet_type == 6)
-            printf("\nCORE:[-_-_-_-_(EMF PACKET of TYPE FINISH_ACK)-_-_-_-_]\n");
-        else if (packet_type == 7)
-            printf("\nCORE:[-_-_-_-_(EMF PACKET of TYPE "")-_-_-_-_]\n");
-        else if (packet_type == 8)
-            printf("\nCORE:[-_-_-_-_(EMF PACKET of HANDOVER)-_-_-_-_]\n");
-        else if (packet_type == 9)
-            printf("\nCORE:[-_-_-_-_(EMF PACKET of TYPE BANDWIDTHAGGREGATION)-_-_-_-_]\n");
-		//else if (packet_type == 10)
-  		//  printf("\nCORE:[-_-_-_-_(EMF PACKET of TYPE DATAPACK)-_-_-_-_]\n");
-        else if (packet_type == 11)
-            printf("\nCORE:[-_-_-_-_(EMF PACKET of TYPE HANDOVER_DATA)-_-_-_-_]\n");
-        else if (packet_type == 12)
-            printf("\nCORE:[-_-_-_-_(EMF PACKET of TYPE BANDWIDTHAGGREGATION_DATA)-_-_-_-_]\n");
-        else if (packet_type == 13)
-            printf("\nCORE:[-_-_-_-_(EMF PACKET of TYPE SINGLEJOIN)-_-_-_-_]\n");
-        else if (packet_type == 14)
-            printf("\nCORE:[-_-_-_-_(EMF PACKET of TYPE "")-_-_-_-_]\n");
-        else if (packet_type == 15)
-            printf("\nCORE:[-_-_-_-_(EMF PACKET of TYPE SINGLEJOIN_DATA)-_-_-_-_]\n");*/
-
-	
+	}	
 	return index;
 }
 
-
-//-----------------------------------------------------------------------------
-
 void update_con_send_buffer(struct assoc_list *assoc_node, unsigned int instant_throughput, int interfaceIndex)
 {
-	//if (show_msg)
-		//showmsg("\nscheduling_handler: update_con_send_buffer() function called, now inside it...");
-
 	while(instant_throughput > 0 && assoc_node->con_send_head[interfaceIndex] != NULL)
-		{
-		// if(assoc_node->con_send_head[interfaceIndex] == NULL)
+	{
 		if(instant_throughput < (assoc_node->con_send_head[interfaceIndex]->hdr_size + assoc_node->con_send_head[interfaceIndex]->data_size - assoc_node->con_send_head[interfaceIndex]->bytes_sent) )
-			{
-			//instant_throughput = 0;
+		{
 			assoc_node->con_send_head[interfaceIndex]->bytes_sent += instant_throughput;
-			}
+		}
 		else
 			if(instant_throughput > (assoc_node->con_send_head[interfaceIndex]->hdr_size + assoc_node->con_send_head[interfaceIndex]->data_size - assoc_node->con_send_head[interfaceIndex]->bytes_sent) )
-				{
+			{
 				instant_throughput = instant_throughput - (assoc_node->con_send_head[interfaceIndex]->hdr_size + assoc_node->con_send_head[interfaceIndex]->data_size - assoc_node->con_send_head[interfaceIndex]->bytes_sent);
 			
 				con_head = assoc_node->con_send_head[interfaceIndex];
@@ -1184,80 +943,62 @@ void update_con_send_buffer(struct assoc_list *assoc_node, unsigned int instant_
 				remove_con_send_node(assoc_node->con_send_head[interfaceIndex]);
 				assoc_node->con_send_head[interfaceIndex] = con_head;
 				assoc_node->con_send_tail[interfaceIndex] = con_tail;
-				}
+			}
 			else
-				{
+			{
 				instant_throughput = 0;
 				con_head = assoc_node->con_send_head[interfaceIndex];
 				con_tail = assoc_node->con_send_tail[interfaceIndex];
 				remove_con_send_node(assoc_node->con_send_head[interfaceIndex]);
 				assoc_node->con_send_head[interfaceIndex] = con_head;
 				assoc_node->con_send_tail[interfaceIndex] = con_tail;
-				}	
-		}
+			}	
+	}
 }
-
-
-
-//-----------------------------------------------------------------------------
-
 
 void save_and_update_emf_buffer(struct assoc_list *assoc_node, char *data, unsigned int seq_no, unsigned int hdr_size, unsigned int packet_size, int interfaceIndex)
 {
-	//if (show_msg)
-		//showmsg("\nscheduling_handler: save_and_update_emf_buffer() function called, now inside it...");
-	
 	struct con_slist *con_send_node=0;
-
 	con_send_node = malloc(sizeof(struct con_slist));
-	
 	if(con_send_node !=NULL)
-		{
+	{
 		con_send_node->hdr_size = hdr_size;
-		con_send_node->seq_no = seq_no;//assoc_node->emf_send_head->seq_no;
+		con_send_node->seq_no = seq_no;
 		con_send_node->data_size = packet_size;
 		con_send_node->bytes_sent = 0;
 		con_send_node->data = malloc(packet_size);
 		if(con_send_node->data != NULL)
-			{	 
-			memcpy(con_send_node->data, data/*assoc_node->emf_send_head->data*/, packet_size);
-			//printf("con_send_node created...\n");
+		{	 
+			memcpy(con_send_node->data, data, packet_size);
 			con_head = assoc_node->con_send_head[interfaceIndex];
 			con_tail = assoc_node->con_send_tail[interfaceIndex];
-			//printf("inserting node in list...\n");
 			append_con_send_node(con_send_node);
-			//printf("list updated...\n");
 			assoc_node->con_send_head[interfaceIndex] = con_head;
 			assoc_node->con_send_tail[interfaceIndex] = con_tail;
-			}
+		}
 		else
 			printf("Memory error1\n");
-		}
+	}
 	else
 		printf("Memory error2\n");
 }
 
-
-
-//-----------------------------------------------------------------------------
 void initialize_assoc_node(struct assoc_list *assoc_node)
 {
-	if (show_msg)
-		showmsg("\nscheduling_handler: initialize_assoc_node() function called, now inside it...");
+    if (show_msg)
+	showmsg("\nscheduling_handler: initialize_assoc_node() function called, now inside it...");
 
-	int j;
-
+   int j;
    assoc_node->emf_send_head = NULL;
    assoc_node->emf_send_tail = NULL;
    assoc_node->emf_recv_head = NULL;
    assoc_node->emf_recv_tail = NULL;
    // assoc_node->ServerIP = NULL;
-   
    strncpy(assoc_node->ServerIP, "0", 1);//?
    assoc_node->ProtocolNo=0;
    
    for(j = 0; j < nINTERFACES; j++)
-	   {
+   {
 	   assoc_node->con_send_head[j] = NULL;
 	   assoc_node->con_send_tail[j] = NULL;
 	   assoc_node->last_data_in_buffer[j] = 0;
@@ -1271,35 +1012,18 @@ void initialize_assoc_node(struct assoc_list *assoc_node)
 	   assoc_node->min_tp_cnt[j] = 0;	
 	   assoc_node->con_recv_node[j].length = 0;
 	   assoc_node->con_recv_node[j].byte_received = 0;
-	   }
+   }
    
    assoc_node->c_ctr = 1;
    assoc_node->scenario = NORMAL;
    assoc_node->terminating = 0;
-   
    assoc_node->expected_seq_no   = 1;
    assoc_node->seq_no_to_deliver = 1;
-
-/*   struct emf_list *emf_node;
-   emf_node = malloc(sizeof(struct emf_list));
-   emf_node->length = 0;
-   emf_node->seq_no = 1;
-   emf_node->data = malloc(SEND_NODE_SIZE);
-   
-   emf_head = assoc_node->emf_send_head;
-   emf_tail = assoc_node->emf_send_tail;
-   append_emf_node(emf_node);
-   assoc_node->emf_send_head = emf_head;
-   assoc_node->emf_send_tail = emf_tail;*/
-   															assoc_node->MyKey=NULL;
-															assoc_node->group=NULL;
-
-
+   assoc_node->MyKey=NULL;
+   assoc_node->group=NULL;
    assoc_node->last_buf_empty = 0;
-   
-   	assoc_node->RNonce=0;
-	assoc_node->SNonce=0;
-	
+   assoc_node->RNonce=0;
+   assoc_node->SNonce=0;	
 }
 
 char hex_to_ascii(char first, char second)
@@ -1312,19 +1036,6 @@ char hex_to_ascii(char first, char second)
   	hex[4] = 0;
   	return strtol(hex, &stop, 16);
 }
-
-
-
-//-----------------------------------------------------------------------------
-//End of file...
-
-
-/*if(ReceivedDataPacket.EMFSequenceNo > assoc_node->con_recv_node[conIndex].seq_no && 
-ReceivedDataPacket.EMFSequenceNo <= (ReceivedDataPacket.EMFSequenceNo + assoc_node->con_recv_node[conIndex].byte_received))*/
-
-
-
-
 
 unsigned int bin2hex (unsigned char *ibuf, unsigned char *obuf, unsigned int ilen)
 
