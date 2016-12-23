@@ -1,16 +1,10 @@
-//-----------------------------------------------------------------------------
 #include "emf.h"
 #include "PacketFormats.h"
-//----------------------------------------------------------------------------
-
-
 
 static const int KDF1_SHA1_len = 20;
-
 //function that generates the session key
 static void *KDF1_SHA11(const void *in, size_t inlen,   void *out,size_t *outlen)
 {
-
 #ifndef OPENSSL_NO_SHA
     if (*outlen < SHA_DIGEST_LENGTH)
         return NULL;
@@ -23,7 +17,6 @@ static void *KDF1_SHA11(const void *in, size_t inlen,   void *out,size_t *outlen
     return NULL;
 #endif
 }
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 char hex_to_ascii1(char first, char second)
 {
@@ -35,108 +28,73 @@ char hex_to_ascii1(char first, char second)
       hex[4] = 0;
       return strtol(hex, &stop, 16);
 }
-
-
-
-
-
 char TLVLength[2];
 char *TLVValue;//allocate memory as that of length
 #define SO_REUSEPORT 15
 #define LOCAL_APP_SERVER_PORT	9999
-
 #define show_msg 0
-
 //----- this is the function that sends the data from teh emf core to the application, it places the data in the buffer and whenever the application calls recv, the data from that buffer is retrieved. this function is the reason why the id_recv in the emf_sock_lib_handler is commented.
 
 void send_to_local_app(struct assoc_list *assoc_node)
 {
-	if (show_msg)
-		showmsg("\nHandleSJBA: send_to_local_app() function called, now inside it...");
-	
-
 	int index = 0;
 	struct emf_list *emf_node;
-	//emf_node = malloc(sizeof(struct emf_list));			
-	/*if(emf_node == NULL)
-	{
-	printf("out of memory\n");
-	}*/
-
 	for(emf_node = assoc_node->emf_recv_head; emf_node != NULL; )
-		{ 
-		//---- compares the seq number, only if the current sequence number = the seq number to deliver , the data will be send to the application
+	{ 
 		if(emf_node->seq_no == assoc_node->seq_no_to_deliver)
-			{
+		{
 			printf("-");
 			char *buf = NULL;
 			buf = malloc(emf_node->length);
-		
 			if(buf == NULL)
-				{
+			{
 				printf("realloc failed\n");
 				return;
-				}
-		
+			}
 			memcpy(buf, emf_node->data, emf_node->length);
 			buf[emf_node->length]='\0';		
 			index = emf_node->length;
 			assoc_node->seq_no_to_deliver += emf_node->length;
-			//remove this node
 			if(index != 0)
-				{
+			{
 				if (send(assoc_node->lib_sockfd, buf, index,  0) <= 0)           //. send data to local server
-					{
+				{
 					perror("socket");
 					if(errno == ECONNRESET)
-					{free(buf);
-					   break;}
-					}
-				else
 					{
-					// nothing in it yet
+						free(buf);
+					   	break;
 					}
 				}
+				else
+				{
+				// nothing in it yet
+				}
+			}
 						
 			if(emf_node->next == NULL)
-				{
+			{
 				emf_head = assoc_node->emf_recv_head;
 				emf_tail = assoc_node->emf_recv_tail;			
 				remove_emf_node(emf_node);
 				assoc_node->emf_recv_head = emf_head;
 				assoc_node->emf_recv_tail = emf_tail;
-				//pintf( "local server 3.2.3\n");
-		//		free(buf);
 				break;
-				}
-			else
-				{
-				//	printf( "local server 3.3\n");
-            	emf_node = emf_node->next;
-            	emf_head = assoc_node->emf_recv_head;
-            	emf_tail = assoc_node->emf_recv_tail;
-            	//  printf( "local server 3.3.1\n");
-            	remove_emf_node(emf_node->prev);
-            	// printf( "local server 3.3.2\n");
-            	assoc_node->emf_recv_head = emf_head;
-            	assoc_node->emf_recv_tail = emf_tail;
-            	//printf( "local server 3.3.3\n");
-				}
-			//free(buf);
 			}
+			else
+			{
+            			emf_node = emf_node->next;
+            			emf_head = assoc_node->emf_recv_head;
+            			emf_tail = assoc_node->emf_recv_tail;
+            			remove_emf_node(emf_node->prev);
+            			assoc_node->emf_recv_head = emf_head;
+            			assoc_node->emf_recv_tail = emf_tail;
+			}
+		}
 		else
 			break;
-		
-		} // end of for loop
-	//	free(buf);
-	//free(emf_node);   //6th Aug
+	} 
 }
-
-
-
-
-
-// --- this function place the data in the emf list, right now it is only used in rare scenarios.
 
 void PlaceinEMFList(struct assoc_list *assocSearch_node,int EMFseqno, int flag)
 {
@@ -145,72 +103,55 @@ void PlaceinEMFList(struct assoc_list *assocSearch_node,int EMFseqno, int flag)
 	
 	int i;
 	int AddSeqNo;
-	
 	if(assocSearch_node->con_recv_node[0].byte_received == 0 && assocSearch_node->con_recv_node[0].length == 0)
-		{
+	{
 		assocSearch_node->con_recv_node[0].byte_received = 0;
 		assocSearch_node->con_recv_node[0].length = 0;
-		}
+	}
 	else
-		{
+	{
 		//assocSearch_node->con_recv_node[0].length=assocSearch_node->con_recv_node[0].byte_received ;
 	 	struct emf_list *new_node;
 		new_node = (struct emf_list *) malloc(sizeof(struct emf_list));
 
 		if (new_node == NULL)
-			{
-			////printf("\nMemory allocation Failure!\n");
+		{
 			exit(0);
-			}
+		}
 		else
-			{
+		{
 			new_node->prev=NULL;
-			new_node->seq_no=assocSearch_node->con_recv_node[0].seq_no; //how to fix it
-						
+			new_node->seq_no=assocSearch_node->con_recv_node[0].seq_no; //how to fix it			
 			//this is the case of handover+data
 			if(flag==1)
-				{
+			{
 				new_node->length=((assocSearch_node->con_recv_node[0].seq_no+assocSearch_node->con_recv_node[0].byte_received)-EMFseqno);
 				memcpy(new_node->data,assocSearch_node->con_recv_node[0].data,new_node->length);
-				}
+			}
 			if(flag==0)
-				{
+			{
 				new_node->length=assocSearch_node->con_recv_node[0].byte_received;
 				memcpy(new_node->data,assocSearch_node->con_recv_node[0].data,assocSearch_node->con_recv_node[0].byte_received);
-				}
-
-			/*for(i = new_node->length; i < assocSearch_node->con_recv_node[0].length; i++)
-				{
-				assocSearch_node->con_recv_node[0].data[i-new_node->length] = assocSearch_node->con_recv_node[0].data[i];
-				}
-	
-				assocSearch_node->con_recv_node[0].length -= new_node->length;
-			assocSearch_node->con_recv_node[0].seq_no += new_node->length;
-			*/	
+			}
 			new_node->next=NULL;
-			//insert in the list
-
 			if(assocSearch_node->expected_seq_no == new_node->seq_no)
-				{	
+			{	
 				emf_head = assocSearch_node->emf_recv_head;
 				emf_tail = assocSearch_node->emf_recv_tail;
 				AddSeqNo = insert_emf_node(new_node);
 				assocSearch_node->emf_recv_head = emf_head;
 				assocSearch_node->emf_recv_tail = emf_tail;
 				assocSearch_node->expected_seq_no += AddSeqNo;			    
-	
 				for(i = new_node->length; i < assocSearch_node->con_recv_node[0].length; i++)
-					{
+				{
 					assocSearch_node->con_recv_node[0].data[i-new_node->length] = assocSearch_node->con_recv_node[0].data[i];
-					}
-	
+				}
 				assocSearch_node->con_recv_node[0].length -= new_node->length;
 				assocSearch_node->con_recv_node[0].seq_no += new_node->length;
-	
-				}
+			}
 			else
 				if(assocSearch_node->expected_seq_no < new_node->seq_no)
-					{
+				{
 					emf_head = assocSearch_node->emf_recv_head;
 					emf_tail = assocSearch_node->emf_recv_tail;
 					insert_emf_node(new_node);
@@ -218,22 +159,16 @@ void PlaceinEMFList(struct assoc_list *assocSearch_node,int EMFseqno, int flag)
 					assocSearch_node->emf_recv_tail = emf_tail;
 				
 					for(i = new_node->length; i < assocSearch_node->con_recv_node[0].length; i++)
-						{
+					{
 						assocSearch_node->con_recv_node[0].data[i-new_node->length] = assocSearch_node->con_recv_node[0].data[i];
-						}
+					}
 					assocSearch_node->con_recv_node[0].length -= new_node->length;
 					assocSearch_node->con_recv_node[0].seq_no += new_node->length;	
-					}
+				}
 			send_to_local_app(assocSearch_node);
-			} //end of if-else, is new node exists
-		}
+		} 
+	}
 }
-
-
-
-
-
-
 
 int searchAssocList(int RemoteSock,unsigned int clearAID,char *encrypted, int iFlag, int LengthofDataPacket)
 {
@@ -241,200 +176,146 @@ int searchAssocList(int RemoteSock,unsigned int clearAID,char *encrypted, int iF
 		showmsg("\nHandleSJBA: searchAssocList() function called, now inside it...");
 
 	int AddSeqNo;
-encrypted[32]='\0';
-
+	encrypted[32]='\0';
 	struct assoc_list *assocSearch_node = assoc_head;
-
 	if (assoc_head == NULL)
 		return 0;
 	else
-		{
+	{
 		while(assocSearch_node!=NULL)
-			{
+		{
 			if (assocSearch_node->aid==clearAID)
-				{
+			{
 				if(iFlag==0)
-					{
-
-						int ret_nonce,ret_aid;
-						decryptAidNonce(&ret_nonce,&ret_aid,encrypted,assocSearch_node);
-						printf("   %d,   %d\n",ret_aid,ret_nonce);
-						if(ret_aid != assocSearch_node->aid || ret_nonce < assocSearch_node->RNonce)
+				{
+					int ret_nonce,ret_aid;
+					decryptAidNonce(&ret_nonce,&ret_aid,encrypted,assocSearch_node);
+					printf("   %d,   %d\n",ret_aid,ret_nonce);
+					if(ret_aid != assocSearch_node->aid || ret_nonce < assocSearch_node->RNonce)
 						exit(0);
-
-
-
-					//--------- 0 flag is the case of BA
-					//assocSearch_node->c_ctr++;															
-					//------ADD the new descriptor in the connection array, set the scenario as BA
 					assocSearch_node->cid[assocSearch_node->c_ctr]=	RemoteSock;
 					assocSearch_node-> scenario=BANDWIDTH_AGGREGATION ;
 					printf("CORE : Received Bandwidth Aggregation Packet from the other side\n");				
-					
 					//----- SEND ADD CONNECTION message to the HA				
 					int j;
 					HA_TLV.TLVType = ADD_CONNECTION;
 					TLVUnit.intValue = assocSearch_node->aid; 
-					
 					for(j=0; j<4; j++)
 						HA_TLV.TLVValue[j] = TLVUnit.charValue[j];				
-					
 					TLVUnit.intValue = RemoteSock; 											
-					
 					for(; j<8; j++)
 						HA_TLV.TLVValue[j] = TLVUnit.charValue[j-4];
-					
 					int len;
 					char ToIP[16];	
 					struct sockaddr_in  my_addr;
 					len = sizeof(struct sockaddr);									 
-					
 					if(getsockname(RemoteSock, (struct sockaddr*)&my_addr, &len) == 0)
-						{
-						//memcpy(&HA_TLV.TLVValue[j], inet_ntoa(my_addr.sin_addr), strlen(inet_ntoa(my_addr.sin_addr)) );
+					{
 						HA_TLV.TLVLength = 8 + strlen(inet_ntoa(my_addr.sin_addr) );	
 						strncpy(ToIP,inet_ntoa(my_addr.sin_addr),strlen(inet_ntoa(my_addr.sin_addr)));
 						ToIP[strlen(inet_ntoa(my_addr.sin_addr))]='\0';
 						memcpy(&HA_TLV.TLVValue[j], ToIP, strlen(ToIP) );				            															
-						
 						HA_TLV.TLVValue[j] = 0;
-						
 						if (send(sock_ha, &HA_TLV, sizeof(HA_TLV), 0)==-1)	//1. send association information to HA
-							{
+						{
 							showerr("Can't send new connection information to host agent...:");
-							}
+						}
 						printf("CORE : ADD_CONNECTION Message Sent to Host Agent with AID(%d), CID(%d), IP(%s)\n", assocSearch_node->aid, RemoteSock, ToIP); //Omer			
-						}                  
-					}
-				
+					}                  
+				}	
 				// 1 flag is the case of Hand over
 				if(iFlag==1)
-					{
-					//------ADD the new descriptor in the connection array, set the scenario as hand over
-
-						int ret_nonce,ret_aid;
-						decryptAidNonce(&ret_nonce,&ret_aid,encrypted,assocSearch_node);
-						printf("   %d,   %d\n",ret_aid,ret_nonce);
-						if(ret_aid != assocSearch_node->aid || ret_nonce < assocSearch_node->RNonce)
-						exit(0);
-
-									
+				{
+					int ret_nonce,ret_aid;
+					decryptAidNonce(&ret_nonce,&ret_aid,encrypted,assocSearch_node);
+					printf("   %d,   %d\n",ret_aid,ret_nonce);
+					if(ret_aid != assocSearch_node->aid || ret_nonce < assocSearch_node->RNonce)
+					exit(0);
 					PlaceinEMFList(assocSearch_node,0,0);
 					//initiate_handover2(assocSearch_node, "192.168.1.35", NORMAL);			
 					//assocSearch_node->c_ctr++;////////////////////////////////////////////////////////////////
 					assocSearch_node->cid[assocSearch_node->c_ctr]=	RemoteSock;
 					assocSearch_node-> scenario=HAND_OVER;
-					printf("CORE : %d : %d Received Handover Packet from the other side\n",assocSearch_node->c_ctr,assocSearch_node->cid[assocSearch_node->c_ctr]);		
-					//printf("CORE : Received Handover Packet from the other side\n");
-					//assocSearch_node-> scenario=HO_LINK_SHIFT_COMMIT;
-					//assocSearch_node->cid[assocSearch_node->c_ctr]=	RemoteSock;
-					}
-				
-				// --- not implemented
+					printf("CORE : %d : %d Received Handover Packet from the other side\n",assocSearch_node->c_ctr,assocSearch_node->cid[assocSearch_node->c_ctr]);	
+				}
 				if(iFlag==2)
-					{			
+				{			
 					Data_Packet ReceivedDataPacket;			
 					char *ReceivedData;
 					int receivedbytes=0;
-					
 					ReceivedData = malloc(LengthofDataPacket);
 					assocSearch_node->con_recv_node[assocSearch_node->c_ctr].data = malloc(LengthofDataPacket);
 					if ((recv(RemoteSock, &ReceivedDataPacket,8, MSG_WAITALL)) <= 0) 
-						{
+					{
 						perror("recv");
 						return -1;
-						}					
+					}					
 
 					if ((receivedbytes=(RemoteSock, ReceivedData,LengthofDataPacket, 0)	) <= 0) 
-						{
+					{
 						perror("recv");
 						return -1;
-						}
-					
+					}			
 					assocSearch_node-> scenario=HAND_OVER;
 					assocSearch_node->cid[assocSearch_node->c_ctr]=	RemoteSock;
-					
-					//assocSearch_node->c_ctr++;												
-					//assocSearch_node->cid[assocSearch_node->c_ctr]=	RemoteSock;
-
 					if(LengthofDataPacket == receivedbytes)
-						{
+					{
 						struct emf_list *new_node;
-						new_node = (struct emf_list *) malloc(sizeof(struct emf_list));
-						
+						new_node = (struct emf_list *) malloc(sizeof(struct emf_list));		
 						if (new_node == NULL)
-							{
-							////printf("\nMemory allocation Failure!\n");
+						{
 							exit(0);
-							}
+						}
 						else
-							{
+						{
 							new_node->prev=NULL;
 							new_node->seq_no=ReceivedDataPacket.EMFSequenceNo;
 							new_node->length=receivedbytes;
 							memcpy(new_node->data,ReceivedData,receivedbytes);
 							new_node->next=NULL;
-
-							//assoc_node->expected_seq_no += receivedbytes;			    
-							//insert_emf_node(assoc_node->emf_recv_head, assoc_node->emf_recv_tail, new_node);
-
 							if(assocSearch_node->expected_seq_no == new_node->seq_no)
-								{	
+							{	
 								emf_head = assocSearch_node->emf_recv_head;
 								emf_tail = assocSearch_node->emf_recv_tail;
 								AddSeqNo = insert_emf_node(new_node);
 								assocSearch_node->emf_recv_head = emf_head;
 								assocSearch_node->emf_recv_tail = emf_tail;
 								assocSearch_node->expected_seq_no += AddSeqNo;			    
-								}
+							}
 							else
 								if(assocSearch_node->expected_seq_no < new_node->seq_no)
-									{
+								{
 									emf_head = assocSearch_node->emf_recv_head;
 									emf_tail = assocSearch_node->emf_recv_tail;
 									insert_emf_node(new_node);
 									assocSearch_node->emf_recv_head = emf_head;
 									assocSearch_node->emf_recv_tail = emf_tail;
-									}
-								//insert in the list
+								}
 								send_to_local_app(assocSearch_node);
-							}
+						}
 						assocSearch_node->con_recv_node[assocSearch_node->c_ctr].byte_received = 0;
 						assocSearch_node->con_recv_node[assocSearch_node->c_ctr].length = 0;
 						free(assocSearch_node->con_recv_node[assocSearch_node->c_ctr].data);
-						}
+					}
 					else
-						{
+					{
 						assocSearch_node->con_recv_node[assocSearch_node->c_ctr].seq_no=ReceivedDataPacket.EMFSequenceNo;
 						assocSearch_node->con_recv_node[assocSearch_node->c_ctr].length=LengthofDataPacket;
 						assocSearch_node->con_recv_node[assocSearch_node->c_ctr].byte_received=receivedbytes;
 						memcpy(assocSearch_node->con_recv_node[assocSearch_node->c_ctr].data,ReceivedData,receivedbytes);
-						}
-					
+					}		
 					PlaceinEMFList(assocSearch_node,ReceivedDataPacket.EMFSequenceNo,1);
-					
 					} // end of if, when flag=2
 				
 				assocSearch_node->c_ctr++;
-				printf("I am incrementing %d\n",assocSearch_node->c_ctr);
-				//it will always be 1 :
-				
+				printf("I am incrementing %d\n",assocSearch_node->c_ctr);				
 				return 1;
 				break;
-				}// end if if, aid == encrupted
-			
+				}
 			assocSearch_node=assocSearch_node->next;
-			}
 		}
+	}
 }
-
-
-
-
-
-
-
-//--- this function is called whenerv there is a new connection from the other side
 int HandleNewConnection(int RemoteSock)
 {
 	if (show_msg)
@@ -443,9 +324,7 @@ int HandleNewConnection(int RemoteSock)
 	int index, j, len;
 	struct sockaddr_in my_addr, *my_addr2;
 	Base_Header ReceivedBaseHeader;
-		char IP[16];
-		
-	//--- receive the 4 bytes of the base header and then on the base on the message type perform the activity
+	char IP[16];
 	if ((recv(RemoteSock, &ReceivedBaseHeader,4,MSG_WAITALL)) == -1)
 		{
 		perror("recv");
@@ -907,110 +786,27 @@ printf("CORE : ADD_ASSOCIATION Message Sent to Host Agent with AID(%d) CID(%d) P
 				} //else
 			} //case
 			
-			
-			
-			
 		case BANDWIDTHAGGREGATION :
-			{
-
-
+		{
 			Bandwidth_Aggregation BandwidthAggregationPacket;
 			if ((recv(RemoteSock, &BandwidthAggregationPacket,sizeof(Bandwidth_Aggregation), 0)) == -1) 
-				{
+			{
 				perror("recv");
 				return 0;
-				}
-
-
-			
-
+			}
 			return (searchAssocList(RemoteSock,BandwidthAggregationPacket.EncryptedAIDNonceClear,BandwidthAggregationPacket.EncryptedAIDNonce,0,0));
 			break;
-			}
-			
-		//---- this case is not implemented yet
-/*		case SINGLEJOIN :
-			{	
-			Single_Join SingleJoinPacket;
-			
-			if ((recv(RemoteSock, &SingleJoinPacket,sizeof(Single_Join), 0)) == -1)
-				{
-				perror("recv");
-				return 0;
-				}
-			
-			return (searchAssocList(RemoteSock,BandwidthAggregationPacket.EncryptedAIDNonceClear,0,0));
-			break;
-			}*/
-			
-		
-		//-- if the established new connection is the case of hand over
+		}
 		case HANDOVER :
-			{
+		{
 			Hand_over HandOverPacket;
 			if ((recv(RemoteSock, &HandOverPacket,sizeof(Hand_over), MSG_WAITALL)) == -1)
-				{
+			{
 			   	perror("recv");
 				exit(1);
-				}
-
-/*				int ret_nonce,ret_aid;
-				decryptAidNonce(&ret_nonce,&ret_aid,BandwidthAggregationPacket.EncryptedAIDNonceClear,assoc_node);
-				printf("   %d,   %d\n",ret_aid,ret_nonce);
-				//if(ret_aid != assoc_node->aid)
-				exit(0);*/
-
-
-			//break;	
-			//place the remaing data in the final list
-			//--- it calls the search assoc list with the flags 1,0
+			}
 			return(searchAssocList(RemoteSock,HandOverPacket.EncryptedAIDNonceClear,HandOverPacket.EncryptedAIDNonce,1,0));
 			break;
-			}
-			
-		//--- not implemented
-		/*case HANDOVER_DATA :
-			{
-			Hand_over HandoverPacket;
-			
-			if ((recv(RemoteSock, &HandoverPacket,4, MSG_WAITALL)) == -1)
-				{
-				perror("recv");
-				exit(1);
-				}
-			
-			return(searchAssocList(RemoteSock,HandoverPacket.EncryptedAIDNonceClear,"none",2,ReceivedBaseHeader.DataLength));
-			break;
-			}*/
-			
-			
-		//--- not implemented
-		/*case BANDWIDTHAGGREGATION_DATA :
-			{
-				Bandwidth_Aggregation BandwidthAggregationPacket;
-				if ((recv(RemoteSock, &BandwidthAggregationPacket,sizeof(Bandwidth_Aggregation), 0)) == -1) 
-			   		{
-			   		perror("recv");
-					exit(1);
-			   		}
-				//ReceiveDataPacketNow(i,ReceivedBaseHeader.DataLength,assoc_node);
-				//return(searchAssocList(RemoteSock,HandOverPacket.EncryptedAIDNonce,0,0));
-				break;
-			}*/
-			
-			
-		//--- not implemented
-		/*case SINGLEJOIN_DATA :
-			{
-			Single_Join SingleJoinPacket;
-			if ((recv(RemoteSock, &SingleJoinPacket,sizeof(Single_Join), 0)) == -1) 
-				{
-				perror("recv");
-				exit(1);
-				}
-			//ReceiveDataPacketNow(i,ReceivedBaseHeader.DataLength,assoc_node);
-			//return(searchAssocList(RemoteSock,HandOverPacket.EncryptedAIDNonce,0,0));
-			break;
-			}*/
 		}
+	}
 }
