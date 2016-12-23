@@ -1,7 +1,4 @@
-//-----------------------------------------------------------------------------
 #include "emf.h"
-//-----------------------------------------------------------------------------
- 
 #define show_msg 0
 
 void append_assoc_node(struct assoc_list *assoc_node)
@@ -23,9 +20,6 @@ void append_assoc_node(struct assoc_list *assoc_node)
 	assoc_tail = assoc_node;
 }
 
-
-
-
 void insert_assoc_node(struct assoc_list *assoc_node, struct assoc_list *after) 
 {
 	if (show_msg)
@@ -41,8 +35,6 @@ void insert_assoc_node(struct assoc_list *assoc_node, struct assoc_list *after)
 
 	after->next = assoc_node;
 }
-
-
 
 void remove_assoc_node(struct assoc_list *assoc_node)
 {
@@ -212,7 +204,6 @@ void append_con_send_node(struct con_slist *con_node)
 	con_tail = con_node;
 }
 
-
 void insert_con_send_node(struct con_slist *con_node, struct con_slist *after)
 {
 	if (show_msg)
@@ -228,8 +219,6 @@ void insert_con_send_node(struct con_slist *con_node, struct con_slist *after)
 
 	after->next = con_node;
 }
-
-
 
 void remove_con_send_node(struct con_slist *con_node)
 {
